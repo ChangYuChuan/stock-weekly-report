@@ -253,26 +253,27 @@ def _cleanup_data_dir(data_root: Path, label: str,
         print(f"\n  Cleaned up {removed_folders} folder(s).")
 
 
-def _cleanup_audio_by_speaker(audio_root: Path, months: int) -> None:
-    """Delete audio files older than `months` from per-speaker subdirectories."""
+def _cleanup_by_speaker(data_root: Path, label: str,
+                        extensions: set[str], months: int) -> None:
+    """Delete files matching `extensions` from per-speaker subdirs older than `months`."""
     if months <= 0:
-        print(f"  Audio: retention = 0 (keep forever), skipping.")
+        print(f"  {label}: retention = 0 (keep forever), skipping.")
         return
 
-    banner(f"CLEANUP — Audio (keep {months} month{'s' if months != 1 else ''})")
+    banner(f"CLEANUP — {label} (keep {months} month{'s' if months != 1 else ''})")
 
-    if not audio_root.exists():
-        print(f"  Directory not found: {audio_root}")
+    if not data_root.exists():
+        print(f"  Directory not found: {data_root}")
         return
 
     cutoff = _cutoff_date(months)
     print(f"  Cutoff date : {cutoff}  (deleting files published before this date)")
 
     removed = 0
-    for speaker_dir in sorted(audio_root.iterdir()):
+    for speaker_dir in sorted(data_root.iterdir()):
         if not speaker_dir.is_dir():
             continue
-        for ext in SUPPORTED_AUDIO_EXTS:
+        for ext in extensions:
             for f in speaker_dir.glob(f"*{ext}"):
                 date_str = f.stem.split("_")[-1]
                 try:
@@ -281,14 +282,18 @@ def _cleanup_audio_by_speaker(audio_root: Path, months: int) -> None:
                     continue
                 if file_date < cutoff:
                     size_mb = f.stat().st_size / (1024 * 1024)
-                    print(f"  Deleting ({size_mb:.1f} MB): {speaker_dir.name}/{f.name}")
+                    print(f"  Deleting ({size_mb:.2f} MB): {speaker_dir.name}/{f.name}")
                     f.unlink()
                     removed += 1
 
     if removed == 0:
-        print("  No old audio files to remove.")
+        print("  No old files to remove.")
     else:
         print(f"  Removed {removed} file(s).")
+
+
+def _cleanup_audio_by_speaker(audio_root: Path, months: int) -> None:
+    _cleanup_by_speaker(audio_root, "Audio", SUPPORTED_AUDIO_EXTS, months)
 
 
 def cleanup_old_data(config: dict) -> bool:
@@ -300,7 +305,7 @@ def cleanup_old_data(config: dict) -> bool:
         parent / "audio",
         int(retention.get("audio_months", 3)),
     )
-    _cleanup_data_dir(
+    _cleanup_by_speaker(
         parent / "transcripts",
         "Transcripts",
         {".txt"},

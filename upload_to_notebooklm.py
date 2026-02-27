@@ -49,6 +49,24 @@ def default_folder_name(lookback_days: int) -> str:
     return f"{start.strftime('%Y%m%d')}-{today.strftime('%Y%m%d')}"
 
 
+def find_transcripts_for_run(transcript_root: Path, folder_name: str) -> list[Path]:
+    """Collect transcript files across per-speaker subdirs whose date falls in the run window."""
+    parts = folder_name.split("-")
+    start_str, end_str = parts[0], parts[1]
+
+    files = []
+    if not transcript_root.exists():
+        return files
+    for speaker_dir in sorted(transcript_root.iterdir()):
+        if not speaker_dir.is_dir():
+            continue
+        for f in speaker_dir.glob("*.txt"):
+            date_str = f.stem.split("_")[-1]
+            if len(date_str) == 8 and start_str <= date_str <= end_str:
+                files.append(f)
+    return sorted(files)
+
+
 # ---------------------------------------------------------------------------
 # nlm CLI wrappers
 # ---------------------------------------------------------------------------
@@ -148,19 +166,15 @@ def run(config: dict, folder_name: str) -> str:
     """Run the upload stage and return the notebook_id."""
     nlm_path = config.get("nlm_path", "nlm")
     parent_folder = Path(config["parent_folder"])
-    transcript_dir = parent_folder / "transcripts" / folder_name
+    transcript_root = parent_folder / "transcripts"
 
-    if not transcript_dir.exists():
-        print(f"ERROR: Transcript directory not found: {transcript_dir}")
+    txt_files = find_transcripts_for_run(transcript_root, folder_name)
+    if not txt_files:
+        print(f"No transcript files found in {transcript_root} for window {folder_name}")
         print("Run transcribe.py first to generate transcripts.")
         sys.exit(1)
 
-    txt_files = sorted(transcript_dir.glob("*.txt"))
-    if not txt_files:
-        print(f"No .txt files found in {transcript_dir}")
-        sys.exit(0)
-
-    print(f"Transcript folder : {transcript_dir}")
+    print(f"Transcript root   : {transcript_root}")
     print(f"Files to upload   : {len(txt_files)}")
     print()
 

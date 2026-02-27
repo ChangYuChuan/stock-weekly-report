@@ -100,11 +100,13 @@ def verify_transcript(transcript_path: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def verify_all(audio_files: list[Path], transcript_dir: Path) -> dict[str, tuple[bool, str]]:
+def verify_all(audio_files: list[Path], transcript_root: Path) -> dict[str, tuple[bool, str]]:
     """Verify every expected transcript and return a {filename: (ok, reason)} map."""
     results = {}
     for audio_file in audio_files:
-        transcript_path = transcript_dir / f"{audio_file.stem}.txt"
+        stem = audio_file.stem
+        speaker = stem.rsplit("_", 1)[0]
+        transcript_path = transcript_root / speaker / f"{stem}.txt"
         results[audio_file.name] = verify_transcript(transcript_path)
     return results
 
@@ -170,9 +172,7 @@ def transcribe_folder(config: dict, folder_name: str) -> None:
 
     parent_folder = Path(config["parent_folder"])
     audio_root = parent_folder / "audio"
-    transcript_dir = parent_folder / "transcripts" / folder_name
-
-    transcript_dir.mkdir(parents=True, exist_ok=True)
+    transcript_root = parent_folder / "transcripts"
 
     audio_files = find_audio_files_for_run(audio_root, folder_name)
     if not audio_files:
@@ -187,7 +187,7 @@ def transcribe_folder(config: dict, folder_name: str) -> None:
     print(f"Compute type    : {compute_type}")
     print(f"Language hint   : {language}")
     print(f"Audio root      : {audio_root}")
-    print(f"Transcript dir  : {transcript_dir}")
+    print(f"Transcript root : {transcript_root}")
     print(f"Files to process: {len(audio_files)}")
     print(f"Max retries     : {MAX_RETRIES}")
     print()
@@ -199,7 +199,11 @@ def transcribe_folder(config: dict, folder_name: str) -> None:
     succeeded, skipped, failed = [], [], []
 
     for idx, audio_file in enumerate(audio_files, start=1):
-        transcript_path = transcript_dir / f"{audio_file.stem}.txt"
+        stem = audio_file.stem                          # e.g. "股癌_20260225"
+        speaker = stem.rsplit("_", 1)[0]               # e.g. "股癌"
+        speaker_transcript_dir = transcript_root / speaker
+        speaker_transcript_dir.mkdir(parents=True, exist_ok=True)
+        transcript_path = speaker_transcript_dir / f"{stem}.txt"
         label = f"[{idx}/{len(audio_files)}]"
 
         # Check if an existing transcript already passes verification
@@ -226,7 +230,7 @@ def transcribe_folder(config: dict, folder_name: str) -> None:
     # ── Post-run verification ─────────────────────────────────────────────
     print("─" * 60)
     print("Verification pass …")
-    verification = verify_all(audio_files, transcript_dir)
+    verification = verify_all(audio_files, transcript_root)
 
     all_ok = True
     for audio_name, (ok, reason) in verification.items():
