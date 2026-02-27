@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 upload_to_notebooklm.py
 
@@ -26,6 +27,12 @@ import yaml
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# A real podcast transcript should comfortably exceed this.
+# This is intentionally stricter than transcribe.py's MIN_TRANSCRIPT_CHARS (50),
+# which only guards against whisper crashes. Here we guard against uploading
+# near-empty files that would pollute the NotebookLM notebook.
+MIN_TRANSCRIPT_UPLOAD_CHARS = 500
+
 
 # ---------------------------------------------------------------------------
 # Config & helpers
@@ -46,9 +53,9 @@ def default_folder_name(lookback_days: int) -> str:
 # nlm CLI wrappers
 # ---------------------------------------------------------------------------
 
-def _run_nlm(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
+def _run_nlm(nlm_path: str, *args: str, capture: bool = True) -> subprocess.CompletedProcess:
     """Run an nlm command and return the CompletedProcess result."""
-    cmd = ["nlm", *args]
+    cmd = [nlm_path, *args]
     print(f"  $ {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=capture, text=True)
     if result.returncode != 0:
@@ -59,15 +66,16 @@ def _run_nlm(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
     return result
 
 
-def check_nlm_auth() -> None:
+def check_nlm_auth(nlm_path: str) -> None:
     """Verify that nlm is installed and the user is authenticated."""
     try:
-        _run_nlm("login", "--check")
+        _run_nlm(nlm_path, "login", "--check")
     except FileNotFoundError:
         print(
-            "ERROR: `nlm` command not found.\n"
+            f"ERROR: `nlm` command not found at '{nlm_path}'.\n"
             "Install it with:  pip install notebooklm-mcp-cli\n"
-            "Then authenticate: nlm login"
+            "Then authenticate: nlm login\n"
+            "Set nlm_path in config.yaml to the full path of the nlm binary."
         )
         sys.exit(1)
     except RuntimeError as exc:
@@ -78,10 +86,10 @@ def check_nlm_auth() -> None:
         sys.exit(1)
 
 
-def list_notebooks() -> list[dict]:
+def list_notebooks(nlm_path: str) -> list[dict]:
     """Return all notebooks as a list of dicts (id, title, …)."""
     try:
-        result = _run_nlm("notebook", "list", "--json")
+        result = _run_nlm(nlm_path, "notebook", "list", "--json")
         data = json.loads(result.stdout)
         # nlm may return a top-level list or {"notebooks": [...]}
         if isinstance(data, list):
@@ -92,38 +100,39 @@ def list_notebooks() -> list[dict]:
         return []
 
 
-def find_notebook_by_title(title: str) -> "str | None":
+def find_notebook_by_title(nlm_path: str, title: str) -> "str | None":
     """Return the ID of the first notebook whose title matches, or None."""
-    for nb in list_notebooks():
+    for nb in list_notebooks(nlm_path):
         nb_title = nb.get("title") or nb.get("name") or ""
         if nb_title.strip() == title.strip():
             return nb.get("notebook_id") or nb.get("id")
     return None
 
 
-def delete_notebook(notebook_id: str) -> None:
+def delete_notebook(nlm_path: str, notebook_id: str) -> None:
     """Delete a notebook by ID (non-fatal on failure)."""
     try:
-        _run_nlm("notebook", "delete", notebook_id)
+        _run_nlm(nlm_path, "notebook", "delete", notebook_id)
         print(f"  Deleted stale notebook: {notebook_id}")
     except RuntimeError as exc:
         print(f"  WARNING: could not delete notebook {notebook_id}: {exc}")
 
 
-def create_notebook(title: str) -> str:
+def create_notebook(nlm_path: str, title: str) -> str:
     """Create a new NotebookLM notebook and return its ID."""
-    result = _run_nlm("notebook", "create", title, "--json")
-    data = json.loads(result.stdout)
-    notebook_id = data.get("notebook_id") or data.get("id")
+    # `nlm notebook create` no longer supports --json, so create then look up by title.
+    _run_nlm(nlm_path, "notebook", "create", title)
+    notebook_id = find_notebook_by_title(nlm_path, title)
     if not notebook_id:
-        raise RuntimeError(f"Could not parse notebook ID from response: {result.stdout}")
+        raise RuntimeError(f"Notebook '{title}' was created but could not be found in the list.")
     return notebook_id
 
 
-def add_source_file(notebook_id: str, file_path: Path) -> None:
+def add_source_file(nlm_path: str, notebook_id: str, file_path: Path) -> None:
     """Upload a single transcript file to a NotebookLM notebook."""
     # --wait blocks until NotebookLM finishes processing the source
     _run_nlm(
+        nlm_path,
         "source", "add", notebook_id,
         "--file", str(file_path),
         "--wait",
@@ -135,7 +144,9 @@ def add_source_file(notebook_id: str, file_path: Path) -> None:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-def run(config: dict, folder_name: str) -> None:
+def run(config: dict, folder_name: str) -> str:
+    """Run the upload stage and return the notebook_id."""
+    nlm_path = config.get("nlm_path", "nlm")
     parent_folder = Path(config["parent_folder"])
     transcript_dir = parent_folder / "transcripts" / folder_name
 
@@ -155,7 +166,7 @@ def run(config: dict, folder_name: str) -> None:
 
     # --- Auth check ---
     print("Checking NotebookLM authentication …")
-    check_nlm_auth()
+    check_nlm_auth(nlm_path)
     print("Authenticated.\n")
 
     # --- Always create a fresh notebook ---
@@ -165,24 +176,46 @@ def run(config: dict, folder_name: str) -> None:
     notebook_title = f"{notebook_prefix} {folder_name}"
 
     print(f"Checking for existing notebook titled '{notebook_title}' …")
-    stale_id = find_notebook_by_title(notebook_title)
+    stale_id = find_notebook_by_title(nlm_path, notebook_title)
     if stale_id:
         print(f"  Found stale notebook ({stale_id}) — deleting it for a clean slate …")
-        delete_notebook(stale_id)
+        delete_notebook(nlm_path, stale_id)
     else:
         print("  None found.")
 
     print(f"\nCreating fresh notebook: '{notebook_title}' …")
-    notebook_id = create_notebook(notebook_title)
+    notebook_id = create_notebook(nlm_path, notebook_title)
     print(f"Notebook created: {notebook_id}\n")
+
+    # --- Transcript sanity check ---
+    print("Validating transcript contents …")
+    valid_files, skipped_files = [], []
+    for txt_file in txt_files:
+        char_count = len(txt_file.read_text(encoding="utf-8").strip())
+        if char_count < MIN_TRANSCRIPT_UPLOAD_CHARS:
+            print(f"  ~ SKIP — suspiciously short ({char_count} chars < {MIN_TRANSCRIPT_UPLOAD_CHARS}): {txt_file.name}")
+            skipped_files.append(txt_file.name)
+        else:
+            print(f"  ✓ OK ({char_count} chars): {txt_file.name}")
+            valid_files.append(txt_file)
+
+    if not valid_files:
+        print("\nERROR: All transcripts failed the sanity check — nothing to upload.")
+        sys.exit(1)
+
+    if skipped_files:
+        print(f"\n  WARNING: {len(skipped_files)} transcript(s) skipped, "
+              f"{len(valid_files)} will be uploaded.\n")
+    else:
+        print()
 
     # --- Upload each transcript ---
     success, failed = 0, []
 
-    for idx, txt_file in enumerate(txt_files, start=1):
-        print(f"[{idx}/{len(txt_files)}] Uploading: {txt_file.name}")
+    for idx, txt_file in enumerate(valid_files, start=1):
+        print(f"[{idx}/{len(valid_files)}] Uploading: {txt_file.name}")
         try:
-            add_source_file(notebook_id, txt_file)
+            add_source_file(nlm_path, notebook_id, txt_file)
             success += 1
         except RuntimeError as exc:
             print(f"  ERROR: {exc}")
@@ -191,13 +224,16 @@ def run(config: dict, folder_name: str) -> None:
 
     # --- Summary ---
     print("=" * 60)
-    print(f"Done. {success}/{len(txt_files)} transcript(s) uploaded.")
+    print(f"Done. {success}/{len(valid_files)} transcript(s) uploaded."
+          + (f"  ({len(skipped_files)} skipped — too short)" if skipped_files else ""))
     print(f"Notebook ID  : {notebook_id}")
     print(f"Open in browser: https://notebooklm.google.com/notebook/{notebook_id}")
     if failed:
         print(f"\nFailed uploads ({len(failed)}):")
         for name in failed:
             print(f"  - {name}")
+
+    return notebook_id
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,12 @@
+# Runtime data — never commit
+data/
+logs/
+
+# Python virtual environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
