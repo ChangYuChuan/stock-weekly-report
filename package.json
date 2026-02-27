@@ -1,0 +1,26 @@
+{
+  "name": "stock-weekly-report",
+  "version": "0.1.0",
+  "description": "Stock weekly podcast report pipeline — CLI and MCP server",
+  "bin": {
+    "swr":     "./bin/swr.js",
+    "swr-mcp": "./bin/swr-mcp.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "*.py",
+    "pyproject.toml",
+    "requirements.txt",
+    "config.yaml.example",
+    "run.sh"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": ["mcp", "stock", "podcast", "cli", "notebooklm"],
+  "license": "MIT"
+}

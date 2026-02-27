@@ -1,0 +1,40 @@
+# config.yaml.example
+#
+# Copy this file to config.yaml and fill in your values,
+# OR run `swr init` to generate it interactively.
+#
+# config.yaml is git-ignored to keep credentials out of the repo.
+
+parent_folder: /path/to/stock-weekly-report/data
+
+feeds:
+  - name: 股癌
+    url: https://feeds.soundon.fm/podcasts/954689a5-3096-43a4-a80b-7810b219cef3.xml
+  - name: M觀點
+    url: https://feeds.soundon.fm/podcasts/b8f5a471-f4f7-4763-9678-65887beda63a.xml
+
+lookback_days: 7
+whisper_model: medium       # tiny / base / small / medium / large / large-v3
+whisper_language: zh
+
+notebooklm_notebook_prefix: 股市週報
+nlm_path: ~/.openclaw/workspace/venv/bin/nlm
+
+email:
+  # Single recipient:
+  to: you@example.com
+  # Multiple recipients (list):
+  # to:
+  #   - you@example.com
+  #   - colleague@example.com
+  from: sender@gmail.com
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  smtp_user: sender@gmail.com
+  smtp_password: ""   # Leave blank — use EMAIL_SMTP_PASSWORD env var instead
+
+# Data retention (0 = keep forever)
+retention:
+  audio_months: 3       # Delete audio files older than N months
+  transcripts_months: 0 # Delete transcripts older than N months (0 = keep forever)
+  reports_months: 0     # Delete reports older than N months (0 = keep forever)

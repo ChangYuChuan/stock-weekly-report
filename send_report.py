@@ -384,7 +384,11 @@ def send_email(config: dict, subject: str, plain_body: str, html_body: str) -> N
     if not email_cfg:
         raise RuntimeError("No 'email' section found in config.yaml.")
 
-    to_addr   = email_cfg["to"]
+    # Support email.to as either a string or a list of strings
+    to_raw    = email_cfg["to"]
+    to_list   = to_raw if isinstance(to_raw, list) else [to_raw]
+    to_header = ", ".join(to_list)
+
     from_addr = email_cfg["from"]
     smtp_host = email_cfg.get("smtp_host", "smtp.gmail.com")
     smtp_port = int(email_cfg.get("smtp_port", 587))
@@ -402,16 +406,16 @@ def send_email(config: dict, subject: str, plain_body: str, html_body: str) -> N
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = from_addr
-    msg["To"]      = to_addr
+    msg["To"]      = to_header
     msg.attach(MIMEText(plain_body, "plain", "utf-8"))
     msg.attach(MIMEText(html_body,  "html",  "utf-8"))
 
-    print(f"  Sending to {to_addr} via {smtp_host}:{smtp_port} …")
+    print(f"  Sending to {to_header} via {smtp_host}:{smtp_port} …")
     with smtplib.SMTP(smtp_host, smtp_port) as smtp:
         smtp.ehlo()
         smtp.starttls()
         smtp.login(smtp_user, smtp_password)
-        smtp.sendmail(from_addr, to_addr, msg.as_string())
+        smtp.sendmail(from_addr, to_list, msg.as_string())
     print("  Email sent.")
 
 
@@ -441,7 +445,7 @@ def save_report(config: dict, folder_name: str, body: str) -> Path:
     return report_path
 
 
-def run(config: dict, folder_name: str, notebook_id: str) -> None:
+def run(config: dict, folder_name: str, notebook_id: str, send_email_flag: bool = True) -> None:
     nlm_path        = config.get("nlm_path", "nlm")
     notebook_prefix = config.get("notebooklm_notebook_prefix", "股市週報")
     date_range      = _format_date_range(folder_name)
@@ -473,9 +477,12 @@ def run(config: dict, folder_name: str, notebook_id: str) -> None:
     print("\nSaving report …")
     save_report(config, folder_name, plain_body)
 
-    # Step 5: Send the email
-    print("\nSending email report …")
-    send_email(config, subject, plain_body, html_body)
+    # Step 5: Send the email (skipped when save_email_flag=False)
+    if send_email_flag:
+        print("\nSending email report …")
+        send_email(config, subject, plain_body, html_body)
+    else:
+        print("\nEmail sending skipped (save-report-only mode).")
 
 
 # ---------------------------------------------------------------------------

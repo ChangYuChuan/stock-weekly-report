@@ -167,12 +167,13 @@ def run_upload(config: dict, folder_name: str) -> "str | bool":
         return False
 
 
-def run_email(config: dict, folder_name: str, notebook_id: str) -> bool:
+def run_email(config: dict, folder_name: str, notebook_id: str,
+              send_email_flag: bool = True) -> bool:
     import send_report
     banner("STAGE 4 / 4 — Generate Report & Send Email")
     t = time.time()
     try:
-        send_report.run(config, folder_name, notebook_id)
+        send_report.run(config, folder_name, notebook_id, send_email_flag=send_email_flag)
         print(f"\n[email] Done in {elapsed(t)}")
         return True
     except Exception:
@@ -181,33 +182,37 @@ def run_email(config: dict, folder_name: str, notebook_id: str) -> bool:
         return False
 
 
-def cleanup_old_audio(config: dict) -> bool:
-    """Delete audio files from week folders older than 3 calendar months.
-
-    Only the audio files are removed; transcript/other files in the same
-    week folder are left untouched.
-    """
-    banner("CLEANUP — Remove Audio Files Older Than 3 Months")
-    audio_root = Path(config["parent_folder"]) / "audio"
-
-    if not audio_root.exists():
-        print(f"  Audio directory not found: {audio_root}")
-        return True
-
+def _cutoff_date(months: int):
+    """Return a date `months` calendar months before today."""
     today = datetime.now(timezone.utc).date()
-    cutoff_month = today.month - 3
-    cutoff_year = today.year
-    if cutoff_month <= 0:
+    cutoff_month = today.month - months
+    cutoff_year  = today.year
+    while cutoff_month <= 0:
         cutoff_month += 12
-        cutoff_year -= 1
-    cutoff = today.replace(year=cutoff_year, month=cutoff_month)
+        cutoff_year  -= 1
+    return today.replace(year=cutoff_year, month=cutoff_month)
+
+
+def _cleanup_data_dir(data_root: Path, label: str,
+                      extensions: set[str], months: int) -> None:
+    """Delete files matching `extensions` from week folders older than `months`."""
+    if months <= 0:
+        print(f"  {label}: retention = 0 (keep forever), skipping.")
+        return
+
+    banner(f"CLEANUP — {label} (keep {months} month{'s' if months != 1 else ''})")
+
+    if not data_root.exists():
+        print(f"  Directory not found: {data_root}")
+        return
+
+    cutoff = _cutoff_date(months)
     print(f"  Cutoff date : {cutoff}  (keeping folders on or after this date)")
 
     removed_folders = 0
-    for week_dir in sorted(audio_root.iterdir()):
+    for week_dir in sorted(data_root.iterdir()):
         if not week_dir.is_dir():
             continue
-        # Folder name format: YYYYMMDD-YYYYMMDD — use the start date
         parts = week_dir.name.split("-")
         if len(parts) != 2 or len(parts[0]) != 8:
             print(f"  Skipping unrecognised folder: {week_dir.name}")
@@ -219,13 +224,13 @@ def cleanup_old_audio(config: dict) -> bool:
             continue
 
         if folder_date < cutoff:
-            audio_files = []
-            for ext in SUPPORTED_AUDIO_EXTS:
-                audio_files.extend(week_dir.glob(f"*{ext}"))
-            if audio_files:
-                total_mb = sum(f.stat().st_size for f in audio_files) / (1024 * 1024)
-                print(f"  Deleting {len(audio_files)} file(s) ({total_mb:.1f} MB) from {week_dir.name}")
-                for f in audio_files:
+            files = []
+            for ext in extensions:
+                files.extend(week_dir.glob(f"*{ext}"))
+            if files:
+                total_mb = sum(f.stat().st_size for f in files) / (1024 * 1024)
+                print(f"  Deleting {len(files)} file(s) ({total_mb:.1f} MB) from {week_dir.name}")
+                for f in files:
                     f.unlink()
                 removed_folders += 1
             else:
@@ -234,10 +239,40 @@ def cleanup_old_audio(config: dict) -> bool:
             print(f"  Keeping : {week_dir.name}")
 
     if removed_folders == 0:
-        print("\n  No old audio files to remove.")
+        print("\n  No old files to remove.")
     else:
-        print(f"\n  Cleaned up audio from {removed_folders} folder(s).")
+        print(f"\n  Cleaned up {removed_folders} folder(s).")
+
+
+def cleanup_old_data(config: dict) -> bool:
+    """Clean up old audio, transcript, and report files per retention config."""
+    retention = config.get("retention", {})
+    parent    = Path(config["parent_folder"])
+
+    _cleanup_data_dir(
+        parent / "audio",
+        "Audio",
+        SUPPORTED_AUDIO_EXTS,
+        int(retention.get("audio_months", 3)),
+    )
+    _cleanup_data_dir(
+        parent / "transcripts",
+        "Transcripts",
+        {".txt"},
+        int(retention.get("transcripts_months", 0)),
+    )
+    _cleanup_data_dir(
+        parent / "reports",
+        "Reports",
+        {".txt", ".html", ".md"},
+        int(retention.get("reports_months", 0)),
+    )
     return True
+
+
+# Keep the old name as an alias so existing callers aren't broken
+def cleanup_old_audio(config: dict) -> bool:
+    return cleanup_old_data(config)
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +298,9 @@ def main() -> None:
     parser.add_argument("--notebook-id", default=None,
                         help="Reuse an existing notebook ID (skips upload, implies --skip-upload).")
     parser.add_argument("--skip-cleanup", action="store_true",
-                        help="Skip the audio cleanup stage.")
+                        help="Skip the data cleanup stage.")
+    parser.add_argument("--save-report-only", action="store_true",
+                        help="Generate and save the report to disk without sending email.")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -341,14 +378,15 @@ def main() -> None:
             print("  Re-run with --notebook-id <id> to send the email separately.")
             results["email"] = "skipped"
         else:
-            ok = run_email(config, folder_name, notebook_id)
+            ok = run_email(config, folder_name, notebook_id,
+                           send_email_flag=not args.save_report_only)
             results["email"] = ok
     else:
         results["email"] = "skipped"
 
-    # ── Cleanup: Remove old audio ────────────────────────────────────
+    # ── Cleanup: Remove old audio / transcripts / reports ───────────
     if not args.skip_cleanup:
-        cleanup_old_audio(config)
+        cleanup_old_data(config)
         results["cleanup"] = True
     else:
         results["cleanup"] = "skipped"

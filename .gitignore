@@ -2,11 +2,18 @@
 data/
 logs/
 
-# Python virtual environment
+# Config contains credentials — generate with `swr init`
+config.yaml
+
+# Python virtual environments
 venv/
+venv14/
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+dist/
+build/
 
 # macOS
 .DS_Store
