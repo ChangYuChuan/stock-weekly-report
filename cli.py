@@ -17,6 +17,7 @@ Usage:
 
 import os
 import re
+import shutil
 import smtplib
 import subprocess
 import sys
@@ -89,6 +90,26 @@ def _write_zprofile_var(var_name: str, value: str) -> None:
     zprofile.write_text(content, encoding="utf-8")
 
 
+def _detect_nlm() -> str:
+    """Auto-detect the nlm binary path."""
+    # 1. Check PATH
+    found = shutil.which("nlm")
+    if found:
+        return found
+    # 2. Check common install locations
+    candidates = [
+        "~/.openclaw/workspace/venv/bin/nlm",
+        "~/.local/bin/nlm",
+        "/usr/local/bin/nlm",
+    ]
+    for candidate in candidates:
+        expanded = Path(candidate).expanduser()
+        if expanded.exists():
+            return str(expanded)
+    # 3. Fall back to the most common location (expanded)
+    return str(Path("~/.openclaw/workspace/venv/bin/nlm").expanduser())
+
+
 def _install_cron_job(schedule: str) -> None:
     run_sh = PROJECT_ROOT / "run.sh"
     lines = _get_crontab()
@@ -133,8 +154,8 @@ def init(ctx):
     default_folder = cfg.get("parent_folder", str(PROJECT_ROOT / "data"))
     parent_folder = click.prompt("Data folder path", default=default_folder)
 
-    # 2. nlm binary path
-    default_nlm = cfg.get("nlm_path", "~/.openclaw/workspace/venv/bin/nlm")
+    # 2. nlm binary path (auto-detect if not already in config)
+    default_nlm = cfg.get("nlm_path") or _detect_nlm()
     nlm_path = click.prompt("nlm binary path", default=default_nlm)
     nlm_path_expanded = str(Path(nlm_path).expanduser())
     if Path(nlm_path_expanded).exists():
