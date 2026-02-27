@@ -18,7 +18,7 @@ whisper_model: medium       # tiny / base / small / medium / large / large-v3
 whisper_language: zh
 
 notebooklm_notebook_prefix: 股市週報
-nlm_path: ~/.openclaw/workspace/venv/bin/nlm
+nlm_path: /path/to/nlm   # optional — only needed for NotebookLM upload stage
 
 email:
   # Single recipient:

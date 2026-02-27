@@ -98,9 +98,9 @@ def _detect_nlm() -> str:
         return found
     # 2. Check common install locations
     candidates = [
-        "~/.openclaw/workspace/venv/bin/nlm",
         "~/.local/bin/nlm",
         "/usr/local/bin/nlm",
+        "/opt/homebrew/bin/nlm",
     ]
     for candidate in candidates:
         expanded = Path(candidate).expanduser()
@@ -170,11 +170,7 @@ def init(ctx):
 
     # 2. nlm binary path (optional — only needed for NotebookLM upload stage)
     saved_nlm = cfg.get("nlm_path", "")
-    default_nlm = (
-        (saved_nlm if saved_nlm and Path(saved_nlm).exists() else None)
-        or _detect_nlm()
-        or str(Path("~/.openclaw/workspace/venv/bin/nlm").expanduser())
-    )
+    default_nlm = (saved_nlm if saved_nlm and Path(saved_nlm).exists() else None) or _detect_nlm()
     click.echo("  (nlm is only needed for the NotebookLM upload stage; use --skip-upload to bypass)")
     nlm_path = click.prompt("nlm binary path [optional, leave blank to skip]", default=default_nlm or "")
     nlm_path = nlm_path.strip()
