@@ -21,6 +21,7 @@ def load_config(path: str | Path) -> dict:
 def save_config(path: str | Path, data: dict) -> None:
     """Atomically write config to path via temp file + rename."""
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=path.parent, delete=False, suffix=".tmp"
     ) as tf:

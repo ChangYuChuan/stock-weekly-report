@@ -28,7 +28,7 @@ import click
 
 # Project root = directory containing this file
 PROJECT_ROOT = Path(__file__).parent.resolve()
-DEFAULT_CONFIG = PROJECT_ROOT / "config.yaml"
+DEFAULT_CONFIG = Path.home() / ".config" / "swr" / "config.yaml"
 CRON_MARKER = "# swr:stock-weekly-report"
 
 
@@ -151,7 +151,7 @@ def init(ctx):
     click.echo("\n=== Stock Weekly Report — Setup Wizard ===\n")
 
     # 1. Parent folder
-    default_folder = cfg.get("parent_folder", str(PROJECT_ROOT / "data"))
+    default_folder = cfg.get("parent_folder", str(Path.home() / "swr-data"))
     parent_folder = click.prompt("Data folder path", default=default_folder)
 
     # 2. nlm binary path (auto-detect if not already in config)
