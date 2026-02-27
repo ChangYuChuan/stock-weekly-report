@@ -96,7 +96,7 @@ def validate_audio_files(config: dict, folder_name: str) -> bool:
     audio_files = sorted(audio_files)
 
     if not audio_files:
-        print(f"  ERROR: No audio files found in {audio_dir}")
+        print(f"  ERROR: No audio files found in {audio_root}")
         return False
 
     usable = 0
@@ -385,7 +385,7 @@ def main() -> None:
         results["fetch"] = "skipped"
 
     # ── Guard: Audio integrity ───────────────────────────────────────
-    if not args.skip_fetch and not args.skip_transcribe:
+    if not args.skip_transcribe:
         ok = validate_audio_files(config, folder_name)
         results["audio_check"] = ok
         if not ok:

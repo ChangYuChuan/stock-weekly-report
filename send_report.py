@@ -439,7 +439,7 @@ def save_report(config: dict, folder_name: str, body: str) -> Path:
     """Save the report text to disk and return the file path."""
     report_dir = Path(config["parent_folder"]) / "reports" / folder_name
     report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = report_dir / "weekly_report.txt"
+    report_path = report_dir / f"weekly_report_{folder_name}.txt"
     report_path.write_text(body, encoding="utf-8")
     print(f"  Report saved to: {report_path}")
     return report_path
