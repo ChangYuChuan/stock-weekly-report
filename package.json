@@ -1,6 +1,6 @@
 {
   "name": "stock-weekly-report",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Stock weekly podcast report pipeline — CLI and MCP server",
   "bin": {
     "swr": "bin/swr.js",
