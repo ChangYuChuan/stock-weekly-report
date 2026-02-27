@@ -151,12 +151,15 @@ def init(ctx):
 
     # 0. Project root (where pipeline.py and venv/ live)
     cwd = Path.cwd()
+    saved_root = cfg.get("project_root", "")
     if (cwd / "pipeline.py").exists():
         suggested_root = str(cwd)
+    elif saved_root and (Path(saved_root) / "pipeline.py").exists():
+        suggested_root = saved_root
     elif (PROJECT_ROOT / "pipeline.py").exists():
         suggested_root = str(PROJECT_ROOT)
     else:
-        suggested_root = cfg.get("project_root", str(PROJECT_ROOT))
+        suggested_root = saved_root or ""
     project_root_input = click.prompt("Project root [required]", default=suggested_root)
     project_root_path = Path(project_root_input).expanduser().resolve()
     if not (project_root_path / "pipeline.py").exists():

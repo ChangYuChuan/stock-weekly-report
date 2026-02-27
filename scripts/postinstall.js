@@ -74,6 +74,25 @@ try {
   execFileSync(pip, ["install", "."], { stdio: "inherit", cwd: ROOT });
 
   fs.writeFileSync(VERSION_FILE, CURRENT_VER + "\n", "utf8");
+
+  // ── Set project_root in config if not already pointing to a valid location ─
+  const configPath = path.join(SWR_DIR, "config.yaml");
+  let needsProjectRoot = true;
+  if (fs.existsSync(configPath)) {
+    const content = fs.readFileSync(configPath, "utf8");
+    const match = content.match(/^project_root:\s*(.+)$/m);
+    if (match) {
+      const existing = match[1].trim().replace(/^['"]|['"]$/g, "");
+      if (fs.existsSync(path.join(existing, "pipeline.py"))) {
+        needsProjectRoot = false;
+      }
+    }
+  }
+  if (needsProjectRoot) {
+    execFileSync(SWR_BIN, ["config", "set", "project_root", ROOT], { stdio: "inherit" });
+    console.log(`swr: Set project_root to ${ROOT}`);
+  }
+
   console.log(`\nswr: Setup complete (v${CURRENT_VER}). Run \`swr --help\` to get started.\n`);
 } catch (err) {
   console.error("\nswr postinstall failed:", err.message);
