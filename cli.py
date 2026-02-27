@@ -169,7 +169,8 @@ def init(ctx):
     parent_folder = click.prompt("Data folder path [required]", default=default_folder)
 
     # 2. nlm binary path (optional — only needed for NotebookLM upload stage)
-    default_nlm = cfg.get("nlm_path") or _detect_nlm()
+    saved_nlm = cfg.get("nlm_path", "")
+    default_nlm = (saved_nlm if saved_nlm and Path(saved_nlm).exists() else None) or _detect_nlm()
     click.echo("  (nlm is only needed for the NotebookLM upload stage; use --skip-upload to bypass)")
     nlm_path = click.prompt("nlm binary path [optional, leave blank to skip]", default=default_nlm or "")
     nlm_path = nlm_path.strip()
