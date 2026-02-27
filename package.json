@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "description": "Stock weekly podcast report pipeline — CLI and MCP server",
   "bin": {
-    "swr":     "./bin/swr.js",
-    "swr-mcp": "./bin/swr-mcp.js"
+    "swr": "bin/swr.js",
+    "swr-mcp": "bin/swr-mcp.js"
   },
   "scripts": {
     "postinstall": "node scripts/postinstall.js"
@@ -22,6 +22,12 @@
     "node": ">=16"
   },
   "author": "Chang Yu Chuan <changyuchuanmicron@gmail.com>",
-  "keywords": ["mcp", "stock", "podcast", "cli", "notebooklm"],
+  "keywords": [
+    "mcp",
+    "stock",
+    "podcast",
+    "cli",
+    "notebooklm"
+  ],
   "license": "MIT"
 }
