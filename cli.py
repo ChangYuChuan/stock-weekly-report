@@ -163,22 +163,32 @@ def init(ctx):
     else:
         click.echo(f"  ! nlm not found at {nlm_path_expanded} — fix this later if needed")
 
-    # 3. SMTP password → ~/.zprofile
+    # 3. SMTP password → ~/.zprofile (optional)
     existing_password = os.environ.get("EMAIL_SMTP_PASSWORD", "")
     if existing_password:
         click.echo("  EMAIL_SMTP_PASSWORD is already set in environment.")
         change_pw = click.confirm("  Update it?", default=False)
+        if change_pw:
+            smtp_password = click.prompt(
+                "Gmail App Password (saved to ~/.zprofile)", hide_input=True
+            )
+            _write_zprofile_var("EMAIL_SMTP_PASSWORD", smtp_password)
+            click.echo("  ✓ Saved to ~/.zprofile")
+        else:
+            smtp_password = existing_password
     else:
-        change_pw = True
-
-    if change_pw:
-        smtp_password = click.prompt(
-            "Gmail App Password (saved to ~/.zprofile)", hide_input=True
-        )
-        _write_zprofile_var("EMAIL_SMTP_PASSWORD", smtp_password)
-        click.echo("  ✓ Saved to ~/.zprofile")
-    else:
-        smtp_password = existing_password
+        click.echo("  Gmail App Password is optional — skip to set it later via")
+        click.echo("  export EMAIL_SMTP_PASSWORD=<your-app-password>  in ~/.zprofile")
+        set_pw = click.confirm("  Set it now?", default=False)
+        if set_pw:
+            smtp_password = click.prompt(
+                "Gmail App Password (saved to ~/.zprofile)", hide_input=True
+            )
+            _write_zprofile_var("EMAIL_SMTP_PASSWORD", smtp_password)
+            click.echo("  ✓ Saved to ~/.zprofile")
+        else:
+            smtp_password = ""
+            click.echo("  Skipped — remember to set EMAIL_SMTP_PASSWORD before running the pipeline.")
 
     # 4. Sender email
     default_from = cfg.get("email", {}).get("from", "")
