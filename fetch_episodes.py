@@ -187,11 +187,6 @@ def fetch_and_download(config: dict, folder_name: str | None = None) -> None:
             filename = f"{program_name}_{date_str}{ext}"
             dest = speaker_dir / filename
 
-            if dest.exists():
-                print(f"  SKIP (already downloaded): {filename}")
-                found += 1
-                continue
-
             print(f"  Downloading: {filename}")
             try:
                 download_file(audio_url, dest)
