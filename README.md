@@ -1,5 +1,7 @@
 # stock-weekly-report
 
+By [Chang Yu Chuan](https://github.com/ChangYuChuan)
+
 Automated pipeline that fetches Taiwanese stock podcast episodes, transcribes them with Whisper, uploads to NotebookLM, and emails a structured weekly investment report.
 
 ---
