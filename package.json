@@ -7,11 +7,13 @@
     "swr-mcp": "bin/swr-mcp.js"
   },
   "scripts": {
-    "postinstall": "node scripts/postinstall.js"
+    "postinstall": "node scripts/postinstall.js",
+    "preuninstall": "node scripts/preuninstall.js"
   },
   "files": [
     "bin/",
-    "scripts/",
+    "scripts/postinstall.js",
+    "scripts/preuninstall.js",
     "*.py",
     "pyproject.toml",
     "requirements.txt",
