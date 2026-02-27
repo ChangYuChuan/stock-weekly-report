@@ -21,6 +21,7 @@
   "engines": {
     "node": ">=16"
   },
+  "author": "Chang Yu Chuan <changyuchuanmicron@gmail.com>",
   "keywords": ["mcp", "stock", "podcast", "cli", "notebooklm"],
   "license": "MIT"
 }
