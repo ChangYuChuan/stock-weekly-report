@@ -91,7 +91,7 @@ def _write_zprofile_var(var_name: str, value: str) -> None:
 
 
 def _detect_nlm() -> str:
-    """Auto-detect the nlm binary path."""
+    """Auto-detect the nlm binary path. Returns '' if not found."""
     # 1. Check PATH
     found = shutil.which("nlm")
     if found:
@@ -106,8 +106,7 @@ def _detect_nlm() -> str:
         expanded = Path(candidate).expanduser()
         if expanded.exists():
             return str(expanded)
-    # 3. Fall back to the most common location (expanded)
-    return str(Path("~/.openclaw/workspace/venv/bin/nlm").expanduser())
+    return ""
 
 
 def _install_cron_job(schedule: str) -> None:
@@ -150,36 +149,57 @@ def init(ctx):
 
     click.echo("\n=== Stock Weekly Report — Setup Wizard ===\n")
 
+    # 0. Project root (where pipeline.py and venv/ live)
+    cwd = Path.cwd()
+    if (cwd / "pipeline.py").exists():
+        suggested_root = str(cwd)
+    elif (PROJECT_ROOT / "pipeline.py").exists():
+        suggested_root = str(PROJECT_ROOT)
+    else:
+        suggested_root = cfg.get("project_root", str(PROJECT_ROOT))
+    project_root_input = click.prompt("Project root [required]", default=suggested_root)
+    project_root_path = Path(project_root_input).expanduser().resolve()
+    if not (project_root_path / "pipeline.py").exists():
+        click.echo(f"  ! pipeline.py not found in {project_root_path} — fix this before running the pipeline")
+    else:
+        click.echo(f"  ✓ pipeline.py found at {project_root_path}")
+
     # 1. Parent folder
     default_folder = cfg.get("parent_folder", str(Path.home() / "swr-data"))
-    parent_folder = click.prompt("Data folder path", default=default_folder)
+    parent_folder = click.prompt("Data folder path [required]", default=default_folder)
 
-    # 2. nlm binary path (auto-detect if not already in config)
+    # 2. nlm binary path (optional — only needed for NotebookLM upload stage)
     default_nlm = cfg.get("nlm_path") or _detect_nlm()
-    nlm_path = click.prompt("nlm binary path", default=default_nlm)
-    nlm_path_expanded = str(Path(nlm_path).expanduser())
-    if Path(nlm_path_expanded).exists():
-        click.echo(f"  ✓ nlm found at {nlm_path_expanded}")
+    click.echo("  (nlm is only needed for the NotebookLM upload stage; use --skip-upload to bypass)")
+    nlm_path = click.prompt("nlm binary path [optional, leave blank to skip]", default=default_nlm or "")
+    nlm_path = nlm_path.strip()
+    if nlm_path:
+        nlm_path_expanded = str(Path(nlm_path).expanduser())
+        if Path(nlm_path_expanded).exists():
+            click.echo(f"  ✓ nlm found at {nlm_path_expanded}")
+        else:
+            click.echo(f"  ! nlm not found at {nlm_path_expanded} — fix this before using the upload stage")
     else:
-        click.echo(f"  ! nlm not found at {nlm_path_expanded} — fix this later if needed")
+        nlm_path_expanded = ""
+        click.echo("  Skipped — use --skip-upload when running the pipeline.")
 
     # 3. SMTP password → ~/.zprofile (optional)
     existing_password = os.environ.get("EMAIL_SMTP_PASSWORD", "")
     if existing_password:
-        click.echo("  EMAIL_SMTP_PASSWORD is already set in environment.")
+        click.echo("\n  EMAIL_SMTP_PASSWORD is already set in environment.")
         change_pw = click.confirm("  Update it?", default=False)
         if change_pw:
             smtp_password = click.prompt(
-                "Gmail App Password (saved to ~/.zprofile)", hide_input=True
+                "Gmail App Password [optional, saved to ~/.zprofile]", hide_input=True
             )
             _write_zprofile_var("EMAIL_SMTP_PASSWORD", smtp_password)
             click.echo("  ✓ Saved to ~/.zprofile")
         else:
             smtp_password = existing_password
     else:
-        click.echo("  Gmail App Password is optional — skip to set it later via")
-        click.echo("  export EMAIL_SMTP_PASSWORD=<your-app-password>  in ~/.zprofile")
-        set_pw = click.confirm("  Set it now?", default=False)
+        set_pw = click.confirm(
+            "\nSet Gmail App Password now? [optional — needed for the email stage]", default=False
+        )
         if set_pw:
             smtp_password = click.prompt(
                 "Gmail App Password (saved to ~/.zprofile)", hide_input=True
@@ -188,11 +208,11 @@ def init(ctx):
             click.echo("  ✓ Saved to ~/.zprofile")
         else:
             smtp_password = ""
-            click.echo("  Skipped — remember to set EMAIL_SMTP_PASSWORD before running the pipeline.")
+            click.echo("  Skipped — set EMAIL_SMTP_PASSWORD in ~/.zprofile before using the email stage.")
 
     # 4. Sender email
     default_from = cfg.get("email", {}).get("from", "")
-    from_email = click.prompt("Sender email (Gmail address)", default=default_from)
+    from_email = click.prompt("\nSender email (Gmail address) [required]", default=default_from)
 
     # 5. Recipient email(s)
     existing_to = cfg.get("email", {}).get("to", "")
@@ -201,7 +221,7 @@ def init(ctx):
     else:
         default_to = existing_to or ""
     to_raw = click.prompt(
-        "Recipient email(s) — comma-separated for multiple", default=default_to
+        "Recipient email(s), comma-separated [required]", default=default_to
     )
     to_list = [e.strip() for e in to_raw.split(",") if e.strip()]
     to_value = to_list if len(to_list) > 1 else (to_list[0] if to_list else "")
@@ -220,7 +240,7 @@ def init(ctx):
             click.echo(f"  ✗ SMTP test failed: {exc}")
 
     # 7. Retention settings
-    click.echo("\n--- Retention Settings ---")
+    click.echo("\n--- Retention Settings [optional, press Enter to keep defaults] ---")
     retention = cfg.get("retention", {})
     audio_months = click.prompt(
         "Keep audio files for (months, 0 = never delete)",
@@ -254,6 +274,7 @@ def init(ctx):
     cfg.setdefault("whisper_language", "zh")
     cfg.setdefault("notebooklm_notebook_prefix", "股市週報")
     cfg.update({
+        "project_root": str(project_root_path),
         "parent_folder": parent_folder,
         "nlm_path": nlm_path_expanded,
         "email": email_cfg,
@@ -294,16 +315,24 @@ def run_cmd(ctx, skip_fetch, skip_transcribe, skip_upload, skip_email, skip_clea
             save_report_only, folder, notebook_id):
     """Run the full pipeline (or specific stages)."""
     config_path = ctx.obj["config"]
-    python_bin = PROJECT_ROOT / "venv" / "bin" / "python3"
-    pipeline_py = PROJECT_ROOT / "pipeline.py"
+    cfg = _load_cfg(config_path)
+    project_root = Path(cfg["project_root"]) if cfg.get("project_root") else PROJECT_ROOT
+    python_bin = project_root / "venv" / "bin" / "python3"
+    pipeline_py = project_root / "pipeline.py"
 
     if not python_bin.exists():
         click.echo(f"Error: Pipeline Python not found at {python_bin}", err=True)
-        click.echo(
-            "Set up the pipeline venv first:\n"
-            "  python3 -m venv venv && venv/bin/pip install -r requirements.txt",
-            err=True,
-        )
+        if not cfg.get("project_root"):
+            click.echo(
+                "project_root is not set in your config. Run 'swr init' to set it.",
+                err=True,
+            )
+        else:
+            click.echo(
+                f"Set up the pipeline venv inside {project_root}:\n"
+                "  python3 -m venv venv && venv/bin/pip install -r requirements.txt",
+                err=True,
+            )
         sys.exit(1)
 
     cmd = [str(python_bin), str(pipeline_py), "--config", str(config_path)]
@@ -316,7 +345,7 @@ def run_cmd(ctx, skip_fetch, skip_transcribe, skip_upload, skip_email, skip_clea
     if folder:           cmd += ["--folder", folder]
     if notebook_id:      cmd += ["--notebook-id", notebook_id]
 
-    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+    result = subprocess.run(cmd, cwd=str(project_root))
     sys.exit(result.returncode)
 
 
