@@ -6,7 +6,10 @@ Fetches RSS feeds from Soundon, finds episodes published within the
 configured lookback window, and downloads the audio files.
 
 Output structure:
-  {parent_folder}/audio/{YYYYMMDD}-{YYYYMMDD}/{program_name}_{YYYYMMDD}.ext
+  {parent_folder}/audio/{program_name}/{program_name}_{YYYYMMDD}.ext
+
+Each speaker has a persistent folder. Downloads are skipped if the file
+already exists (checked by filename / date), so re-runs are safe.
 """
 
 import os
@@ -144,11 +147,10 @@ def fetch_and_download(config: dict, folder_name: str | None = None) -> None:
         end_date   = date(int(parts[1][:4]), int(parts[1][4:6]), int(parts[1][6:8]))
 
     parent_folder = Path(config["parent_folder"])
-    audio_dir = parent_folder / "audio" / run_folder
-    audio_dir.mkdir(parents=True, exist_ok=True)
+    audio_root = parent_folder / "audio"
 
     print(f"Date range  : {start_date} → {end_date}")
-    print(f"Audio folder: {audio_dir}")
+    print(f"Audio root  : {audio_root}")
     print()
 
     total_downloaded = 0
@@ -156,6 +158,9 @@ def fetch_and_download(config: dict, folder_name: str | None = None) -> None:
     for feed_cfg in config.get("feeds", []):
         program_name = feed_cfg["name"]
         feed_url = feed_cfg["url"]
+
+        speaker_dir = audio_root / program_name
+        speaker_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"[{program_name}] Fetching feed …")
         parsed = feedparser.parse(feed_url)
@@ -180,7 +185,7 @@ def fetch_and_download(config: dict, folder_name: str | None = None) -> None:
             ext = url_extension(audio_url)
             date_str = pub_date.strftime("%Y%m%d")
             filename = f"{program_name}_{date_str}{ext}"
-            dest = audio_dir / filename
+            dest = speaker_dir / filename
 
             if dest.exists():
                 print(f"  SKIP (already downloaded): {filename}")
@@ -203,7 +208,7 @@ def fetch_and_download(config: dict, folder_name: str | None = None) -> None:
             print(f"  No new episodes in the past {lookback_days} days.")
         print()
 
-    print(f"Done. {total_downloaded} file(s) newly downloaded → {audio_dir}")
+    print(f"Done. {total_downloaded} file(s) newly downloaded → {audio_root}")
 
 
 def run(config_path: str = "config.yaml") -> None:

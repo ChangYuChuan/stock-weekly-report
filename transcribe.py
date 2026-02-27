@@ -15,6 +15,9 @@ Usage:
   python transcribe.py --folder 20260218-20260225
   python transcribe.py --config my_config.yaml --folder 20260218-20260225
 
+Input structure:
+  {parent_folder}/audio/{program_name}/{program_name}_{YYYYMMDD}.ext
+
 Output structure:
   {parent_folder}/transcripts/{YYYYMMDD}-{YYYYMMDD}/{stem}.txt
 """
@@ -51,10 +54,26 @@ def default_folder_name(lookback_days: int) -> str:
     return f"{start.strftime('%Y%m%d')}-{today.strftime('%Y%m%d')}"
 
 
-def find_audio_files(audio_dir: Path) -> list[Path]:
+def find_audio_files_for_run(audio_root: Path, folder_name: str) -> list[Path]:
+    """Collect audio files across per-speaker subdirs whose date falls in the run window.
+
+    Expects filenames of the form {speaker}_{YYYYMMDD}.ext so the date can be
+    extracted from the stem suffix.
+    """
+    parts = folder_name.split("-")
+    start_str, end_str = parts[0], parts[1]
+
     files = []
-    for ext in SUPPORTED_AUDIO_EXTS:
-        files.extend(audio_dir.glob(f"*{ext}"))
+    if not audio_root.exists():
+        return files
+    for speaker_dir in sorted(audio_root.iterdir()):
+        if not speaker_dir.is_dir():
+            continue
+        for ext in SUPPORTED_AUDIO_EXTS:
+            for f in speaker_dir.glob(f"*{ext}"):
+                date_str = f.stem.split("_")[-1]
+                if len(date_str) == 8 and start_str <= date_str <= end_str:
+                    files.append(f)
     return sorted(files)
 
 
@@ -150,18 +169,14 @@ def transcribe_folder(config: dict, folder_name: str) -> None:
     from faster_whisper import WhisperModel
 
     parent_folder = Path(config["parent_folder"])
-    audio_dir = parent_folder / "audio" / folder_name
+    audio_root = parent_folder / "audio"
     transcript_dir = parent_folder / "transcripts" / folder_name
-
-    if not audio_dir.exists():
-        print(f"ERROR: Audio directory not found: {audio_dir}")
-        sys.exit(1)
 
     transcript_dir.mkdir(parents=True, exist_ok=True)
 
-    audio_files = find_audio_files(audio_dir)
+    audio_files = find_audio_files_for_run(audio_root, folder_name)
     if not audio_files:
-        print(f"No audio files found in {audio_dir}")
+        print(f"No audio files found in {audio_root} for run window {folder_name}")
         return
 
     model_name = config.get("whisper_model", "medium")
@@ -171,7 +186,7 @@ def transcribe_folder(config: dict, folder_name: str) -> None:
     print(f"Whisper model   : {model_name}  (faster-whisper / CTranslate2)")
     print(f"Compute type    : {compute_type}")
     print(f"Language hint   : {language}")
-    print(f"Audio folder    : {audio_dir}")
+    print(f"Audio root      : {audio_root}")
     print(f"Transcript dir  : {transcript_dir}")
     print(f"Files to process: {len(audio_files)}")
     print(f"Max retries     : {MAX_RETRIES}")

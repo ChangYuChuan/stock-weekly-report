@@ -79,11 +79,20 @@ def validate_audio_files(config: dict, folder_name: str) -> bool:
       - Returns False (abort) only when zero usable audio files remain after cleanup.
     """
     banner("GUARD — Audio File Integrity")
-    audio_dir = Path(config["parent_folder"]) / "audio" / folder_name
+    audio_root = Path(config["parent_folder"]) / "audio"
+    parts = folder_name.split("-")
+    start_str, end_str = parts[0], parts[1]
 
     audio_files = []
-    for ext in SUPPORTED_AUDIO_EXTS:
-        audio_files.extend(audio_dir.glob(f"*{ext}"))
+    if audio_root.exists():
+        for speaker_dir in sorted(audio_root.iterdir()):
+            if not speaker_dir.is_dir():
+                continue
+            for ext in SUPPORTED_AUDIO_EXTS:
+                for f in speaker_dir.glob(f"*{ext}"):
+                    date_str = f.stem.split("_")[-1]
+                    if len(date_str) == 8 and start_str <= date_str <= end_str:
+                        audio_files.append(f)
     audio_files = sorted(audio_files)
 
     if not audio_files:
@@ -244,15 +253,51 @@ def _cleanup_data_dir(data_root: Path, label: str,
         print(f"\n  Cleaned up {removed_folders} folder(s).")
 
 
+def _cleanup_audio_by_speaker(audio_root: Path, months: int) -> None:
+    """Delete audio files older than `months` from per-speaker subdirectories."""
+    if months <= 0:
+        print(f"  Audio: retention = 0 (keep forever), skipping.")
+        return
+
+    banner(f"CLEANUP — Audio (keep {months} month{'s' if months != 1 else ''})")
+
+    if not audio_root.exists():
+        print(f"  Directory not found: {audio_root}")
+        return
+
+    cutoff = _cutoff_date(months)
+    print(f"  Cutoff date : {cutoff}  (deleting files published before this date)")
+
+    removed = 0
+    for speaker_dir in sorted(audio_root.iterdir()):
+        if not speaker_dir.is_dir():
+            continue
+        for ext in SUPPORTED_AUDIO_EXTS:
+            for f in speaker_dir.glob(f"*{ext}"):
+                date_str = f.stem.split("_")[-1]
+                try:
+                    file_date = datetime.strptime(date_str, "%Y%m%d").date()
+                except ValueError:
+                    continue
+                if file_date < cutoff:
+                    size_mb = f.stat().st_size / (1024 * 1024)
+                    print(f"  Deleting ({size_mb:.1f} MB): {speaker_dir.name}/{f.name}")
+                    f.unlink()
+                    removed += 1
+
+    if removed == 0:
+        print("  No old audio files to remove.")
+    else:
+        print(f"  Removed {removed} file(s).")
+
+
 def cleanup_old_data(config: dict) -> bool:
     """Clean up old audio, transcript, and report files per retention config."""
     retention = config.get("retention", {})
     parent    = Path(config["parent_folder"])
 
-    _cleanup_data_dir(
+    _cleanup_audio_by_speaker(
         parent / "audio",
-        "Audio",
-        SUPPORTED_AUDIO_EXTS,
         int(retention.get("audio_months", 3)),
     )
     _cleanup_data_dir(
