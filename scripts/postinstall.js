@@ -72,6 +72,7 @@ try {
 
   const pip = path.join(VENV, "bin", "pip");
   execFileSync(pip, ["install", "."], { stdio: "inherit", cwd: ROOT });
+  execFileSync(pip, ["install", "notebooklm-mcp-cli"], { stdio: "inherit", cwd: ROOT });
 
   fs.writeFileSync(VERSION_FILE, CURRENT_VER + "\n", "utf8");
 
@@ -91,6 +92,22 @@ try {
   if (needsProjectRoot) {
     execFileSync(SWR_BIN, ["config", "set", "project_root", ROOT], { stdio: "inherit" });
     console.log(`swr: Set project_root to ${ROOT}`);
+  }
+
+  // ── Set nlm_path if not already pointing to a working binary ─────────────
+  const nlmBin = path.join(VENV, "bin", "nlm");
+  let needsNlmPath = true;
+  if (fs.existsSync(configPath)) {
+    const content = fs.readFileSync(configPath, "utf8");
+    const match = content.match(/^nlm_path:\s*(.+)$/m);
+    if (match) {
+      const existing = match[1].trim().replace(/^['"]|['"]$/g, "");
+      if (fs.existsSync(existing)) needsNlmPath = false;
+    }
+  }
+  if (needsNlmPath && fs.existsSync(nlmBin)) {
+    execFileSync(SWR_BIN, ["config", "set", "nlm_path", nlmBin], { stdio: "inherit" });
+    console.log(`swr: Set nlm_path to ${nlmBin}`);
   }
 
   console.log(`\nswr: Setup complete (v${CURRENT_VER}). Run \`swr --help\` to get started.\n`);

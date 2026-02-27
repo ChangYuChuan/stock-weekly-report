@@ -17,7 +17,6 @@ Usage:
 
 import os
 import re
-import shutil
 import smtplib
 import subprocess
 import sys
@@ -90,24 +89,6 @@ def _write_zprofile_var(var_name: str, value: str) -> None:
     zprofile.write_text(content, encoding="utf-8")
 
 
-def _detect_nlm() -> str:
-    """Auto-detect the nlm binary path. Returns '' if not found."""
-    # 1. Check PATH
-    found = shutil.which("nlm")
-    if found:
-        return found
-    # 2. Check common install locations
-    candidates = [
-        "~/.local/bin/nlm",
-        "/usr/local/bin/nlm",
-        "/opt/homebrew/bin/nlm",
-    ]
-    for candidate in candidates:
-        expanded = Path(candidate).expanduser()
-        if expanded.exists():
-            return str(expanded)
-    return ""
-
 
 def _install_cron_job(schedule: str) -> None:
     run_sh = PROJECT_ROOT / "run.sh"
@@ -171,21 +152,21 @@ def init(ctx):
     default_folder = cfg.get("parent_folder", str(Path.home() / "swr-data"))
     parent_folder = click.prompt("Data folder path [required]", default=default_folder)
 
-    # 2. nlm binary path (optional — only needed for NotebookLM upload stage)
-    saved_nlm = cfg.get("nlm_path", "")
-    default_nlm = (saved_nlm if saved_nlm and Path(saved_nlm).exists() else None) or _detect_nlm()
-    click.echo("  (nlm is only needed for the NotebookLM upload stage; use --skip-upload to bypass)")
-    nlm_path = click.prompt("nlm binary path [optional, leave blank to skip]", default=default_nlm or "")
-    nlm_path = nlm_path.strip()
-    if nlm_path:
-        nlm_path_expanded = str(Path(nlm_path).expanduser())
-        if Path(nlm_path_expanded).exists():
-            click.echo(f"  ✓ nlm found at {nlm_path_expanded}")
-        else:
-            click.echo(f"  ! nlm not found at {nlm_path_expanded} — fix this before using the upload stage")
+    # 2. nlm — installed automatically by postinstall; check auth status
+    nlm_path_expanded = cfg.get("nlm_path", "")
+    if nlm_path_expanded and Path(nlm_path_expanded).exists():
+        click.echo(f"  ✓ nlm found at {nlm_path_expanded}")
+        auth_ok = subprocess.run(
+            [nlm_path_expanded, "login", "--check"],
+            capture_output=True,
+        ).returncode == 0
+        if auth_ok:
+            click.echo("  ✓ nlm already authenticated")
+        elif click.confirm("  Log in to NotebookLM now? [optional — needed for upload stage]", default=True):
+            subprocess.run([nlm_path_expanded, "login"], check=False)
     else:
-        nlm_path_expanded = ""
-        click.echo("  Skipped — use --skip-upload when running the pipeline.")
+        click.echo("  ! nlm not found — run: swr config set nlm_path /path/to/nlm")
+        click.echo("    (or reinstall: npm install -g stock-weekly-report)")
 
     # 3. SMTP password → ~/.zprofile (optional)
     existing_password = os.environ.get("EMAIL_SMTP_PASSWORD", "")
@@ -280,7 +261,6 @@ def init(ctx):
     cfg.update({
         "project_root": str(project_root_path),
         "parent_folder": parent_folder,
-        "nlm_path": nlm_path_expanded,
         "email": email_cfg,
         "retention": {
             "audio_months": audio_months,
@@ -582,6 +562,26 @@ def config_set(ctx, key, value):
                 obj[leaf] = value
     _save_cfg(config_path, cfg)
     click.echo(f"Set {key} = {obj[leaf]}")
+
+
+# ─── nlm-login ────────────────────────────────────────────────────────────────
+
+@main.command("nlm-login")
+@click.pass_context
+def nlm_login_cmd(ctx):
+    """Log in to NotebookLM (browser OAuth). Run once, or again if auth expires."""
+    cfg = _load_cfg(ctx.obj["config"])
+    nlm_path = cfg.get("nlm_path", "")
+    if not nlm_path or not Path(nlm_path).exists():
+        click.echo("Error: nlm not found. Set it with: swr config set nlm_path /path/to/nlm", err=True)
+        sys.exit(1)
+    auth_ok = subprocess.run([nlm_path, "login", "--check"], capture_output=True).returncode == 0
+    if auth_ok:
+        click.echo("Already authenticated. Use --force to re-login.")
+        if not click.confirm("Re-login anyway?", default=False):
+            return
+    result = subprocess.run([nlm_path, "login"], check=False)
+    sys.exit(result.returncode)
 
 
 # ─── mcp ──────────────────────────────────────────────────────────────────────
