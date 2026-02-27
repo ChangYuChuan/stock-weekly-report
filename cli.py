@@ -170,7 +170,11 @@ def init(ctx):
 
     # 2. nlm binary path (optional — only needed for NotebookLM upload stage)
     saved_nlm = cfg.get("nlm_path", "")
-    default_nlm = (saved_nlm if saved_nlm and Path(saved_nlm).exists() else None) or _detect_nlm()
+    default_nlm = (
+        (saved_nlm if saved_nlm and Path(saved_nlm).exists() else None)
+        or _detect_nlm()
+        or str(Path("~/.openclaw/workspace/venv/bin/nlm").expanduser())
+    )
     click.echo("  (nlm is only needed for the NotebookLM upload stage; use --skip-upload to bypass)")
     nlm_path = click.prompt("nlm binary path [optional, leave blank to skip]", default=default_nlm or "")
     nlm_path = nlm_path.strip()
