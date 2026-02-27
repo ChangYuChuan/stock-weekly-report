@@ -4,6 +4,6 @@
 const { spawn } = require("child_process");
 const path = require("path");
 
-const bin = path.join(__dirname, "..", "venv14", "bin", "swr-mcp");
+const bin = path.join(require("os").homedir(), ".config", "swr", "venv", "bin", "swr-mcp");
 const proc = spawn(bin, process.argv.slice(2), { stdio: "inherit" });
 proc.on("close", (code) => process.exit(code ?? 0));
